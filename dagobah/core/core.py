@@ -316,6 +316,26 @@ class Job(DAG):
         self.add_node(name)
         self.commit()
 
+    def add_jobtask(self, job_name):
+        """
+        Adds a new JobTask to the graph with no edges. Since you can have the
+        same Job as multiple tasks, they are appended with a random string to
+        differentiate between them, and this task name is returned for ease of
+        use and testing.
+        """
+
+        if not self.state.allow_change_graph:
+            raise DagobahError("job's graph is immutable in its current state: %s"
+                               % self.state.status)
+
+        name = job_name + os.urandom(10)
+
+        new_jobtask = JobTask(self, job_name)
+        self.tasks[name] = new_jobtask
+        self.add_node(name)
+        self.commit()
+        return name
+
 
     def add_dependency(self, from_task_name, to_task_name):
         """ Add a dependency between two tasks. """
@@ -658,6 +678,32 @@ class Job(DAG):
         if strict_json:
             result = json.loads(json.dumps(result, cls=StrictJSONEncoder))
         return result
+
+
+    def verify(self, context=None):
+        """
+        Verify that the job has no cycles where a JobTask circularly
+        references another JobTask so that we know we can safely snapshot
+        the DAG.
+
+        Explanation:
+            1. If the current job is in the context, the job is not valid
+            2. Perform a topological sort without expanding tasks (current job
+               is acyclic)
+            3. Traverse nodes in topological order. For each node that is a Job,
+               run verify on that node, passing in the current context.
+        """
+        if context is None:
+            context = set()
+        if self.name in context:
+            return False
+        print context
+        context.add(self.name)
+
+        # Check each node
+
+        return True
+
 
 
 class Task(object):
@@ -1043,7 +1089,7 @@ class JobTask(Task):
         name to prevent collision with wanting the same subjob multiple
         times in the same parent job.
         """
-        super(JobTask, self).__init__(self, parent_job, None,
+        super(JobTask, self).__init__(parent_job, None,
                                       job_name + os.urandom(10), soft_timeout,
                                       hard_timeout, None)
         self.job_name = job_name
@@ -1052,12 +1098,6 @@ class JobTask(Task):
         raise DagobahError("Method not valid for JobTask")
 
     def stop(self):
-        raise DagobahError("Method not valid for JobTask")
-
-    def set_soft_timeout(self, timeout):
-        raise DagobahError("Method not valid for JobTask")
-
-    def set_hard_timeout(self, timeout):
         raise DagobahError("Method not valid for JobTask")
 
     def set_hostname(self, hostname):

@@ -255,3 +255,20 @@ def test_ssh_config_load():
     assert "test_host" in hosts
     assert "*" not in hosts
     assert "nonexistant" not in hosts
+
+@with_setup(blank_dagobah)
+def test_job_in_job_basic():
+    dagobah.add_job("Job A")
+    dagobah.add_job("Job B")
+
+    job_a = dagobah.get_job("Job A")
+    job_b = dagobah.get_job("Job B")
+
+    job_a.add_task("pwd")
+    job_a.add_task("ls ~/")
+
+    job_b.add_task("ls")
+    job_b.add_jobtask(job_a.name)
+
+    job_b.validate()
+
